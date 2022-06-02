@@ -8,11 +8,18 @@ public class Data
 {
     public string Type { get; set; }
     public string[] Value { get; set; }
+    public string[] Name { get; set; }
+    public string[] Id { get; set; }
+
+
 }
 
-[System.Serializable]
-public class DataList
+
+/*[System.Serializable]
+public class Text_model
 {
-    public List<DataList> Data_s { get; set; }
-    //public User[] users;
-}
+    
+}*/
+
+
+

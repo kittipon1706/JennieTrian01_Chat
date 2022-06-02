@@ -5,19 +5,19 @@ using WebSocketSharp;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.Collections.Generic;
+using System.Collections;
 
 public class Client : MonoBehaviour
 {
     public static Client Instance;
-    [SerializeField] private InputField _MyInput;
-    [SerializeField] private InputField _MyName;
-    [SerializeField] private Button _Sendbtn;
-    [SerializeField] private Button _Connectbtn;
+
     [SerializeField] public string id;
     [SerializeField] public string Name;
     private WebSocket ws;
     private MessagePooling _MessagePooling;
     private EventHandler _EventHandler;
+
+    private UI_Controller _UI_controller;
 
     [System.Serializable]
     public class User
@@ -26,28 +26,30 @@ public class Client : MonoBehaviour
         public string Id;
     }
 
-    [SerializeField] public List<User> _AllUser = new List<User>();
+    [SerializeField] public Dictionary<string, User> _AllUser = new Dictionary<string, User>();
+
+    private void Awake()
+    {
+        Instance = this;
+    }
 
     private void Start()
     {
-        Instance = this;
-
-        _EventHandler = new EventHandler();
-        _EventHandler.OnIdReceived += Set_ClientId;
-        _EventHandler.OnMessageReceived += Show_Message;
-        _EventHandler.OnNameReceived += Set_Name;
-
+        _UI_controller = UI_Controller.Instance;
         _MessagePooling = MessagePooling.Instance;
-        _Sendbtn.onClick.AddListener(Send_Message);
+        _EventHandler = EventHandler.Instance;
 
+        _EventHandler.OnIdReceived += Set_ClientId;
+        _EventHandler.OnNameReceived += Set_User;
+        _EventHandler.OnPlayerDisconnect += Dis_User;
 
-        _Connectbtn.onClick.AddListener(Try_Conrrect);
-
+        _UI_controller._Sendbtn.onClick.AddListener(Send_Message);
+        _UI_controller._Connectbtn.onClick.AddListener(Try_Connnect);
     }
 
-    private void Try_Conrrect()
+    public void Try_Connnect()
     {
-        if (!string.IsNullOrEmpty(_MyName.text))
+        if (!string.IsNullOrEmpty(_UI_controller._MyName.text) && _UI_controller._MyName.text.Length <= 10)
         {
             try
             {
@@ -64,6 +66,8 @@ public class Client : MonoBehaviour
         }
         else
         {
+
+            _UI_controller._MyInput.text = string.Empty;
             return;
         }
     }
@@ -71,48 +75,59 @@ public class Client : MonoBehaviour
     private void ws_Onclose(object sender, CloseEventArgs e)
     {
         Debug.Log("DISCONNECTED");
+        _AllUser.Clear();
+        UnityMainThreadDispatcher.Instance().Enqueue(_UI_controller.OnDisconnectServerUI());
+        var message = JsonConvert.SerializeObject(new { Type = "disconnect", sender = Name, msg = id });
+        ws.Send(message);
     }
 
     private void ws_Onopen(object sender, EventArgs e)
     {
         Debug.Log("CONNECTED");
-        Send_Name();
-        OnConnectServer();
+        Send_MyName();
+        UnityMainThreadDispatcher.Instance().Enqueue(_UI_controller.OnConnectServerUI());
     }
 
-    private void Send_Message()
+    public void Send_Message()
     {
-        if (!string.IsNullOrEmpty(_MyInput.text))
+        if (!string.IsNullOrEmpty(_UI_controller._MyInput.text))
         {
-            var message = JsonConvert.SerializeObject(new { Type = "message", sender = id, msg = _MyInput.text });
-            _MyInput.text = string.Empty;
+            var input = string.Empty;
+            var message = string.Empty;
+            if (_UI_controller._MyInput.text.Length >= 30)
+            {
+                input = _UI_controller._MyInput.text.Substring(0, 30);
+                message = JsonConvert.SerializeObject(new { Type = "message", sender = id, msg = input });
+            }
+            else
+            {
+                message = JsonConvert.SerializeObject(new { Type = "message", sender = id, msg = _UI_controller._MyInput.text });
+            }
+            _UI_controller._MyInput.text = string.Empty;
             ws.Send(message);
         }
-        
-    }
-
-    private void Send_Name()
-    {
-        if (!string.IsNullOrEmpty(_MyName.text))
+        else
         {
-            var message = JsonConvert.SerializeObject(new { Type = "name", sender = _MyName.text , msg = id });
-            ws.Send(message);
-
-            Name = _MyInput.text;
-
-            _MyInput.text = string.Empty;
-
+            _UI_controller._MyInput.text = string.Empty;
         }
     }
 
-    private void OnConnectServer()
+    private void Send_MyName()
     {
-        _MyName.DeactivateInputField();
-        _Connectbtn.enabled = false;
-        _MyInput.ActivateInputField();
-        _Sendbtn.enabled = true;
+        if (!string.IsNullOrEmpty(_UI_controller._MyName.text) )
+        {
+            var message = JsonConvert.SerializeObject(new { Type = "name", sender = _UI_controller._MyName.text , msg = id });
+            ws.Send(message);
+
+            Name = _UI_controller._MyName.text;
+
+            _UI_controller._MyName.text = string.Empty;
+
+        }
+       
     }
 
+   
 
     private void Set_ClientId(string id)
     {
@@ -122,26 +137,38 @@ public class Client : MonoBehaviour
         }
     }
 
-    private void Show_Message(string sender, string msg)
-    {
-        UnityMainThreadDispatcher.Instance().Enqueue(_MessagePooling.Enqueue_OutPoolmsg(sender, msg));
-    }
 
-    private void Set_Name(string name ,string Id)
-    {
-        var user = new User();
-        user.name = name;
-        user.Id = Id;
-        _AllUser.Add(user);
 
-        Show_Alluser();
-    }
-
-    private void Show_Alluser()
+    private void Set_User(string[] name,string[] id)
     {
-        foreach (var item in _AllUser)
+        for (int i = 0; i < name.Length; i++)
         {
-            UnityMainThreadDispatcher.Instance().Enqueue(_MessagePooling.Enqueue_OutPooluser(item.name));
+            var user = new User();
+            user.name = name[i];
+            user.Id = id[i];
+            if (!_AllUser.ContainsKey(user.Id))
+            {
+                _AllUser.Add(user.Id,user);
+
+            }
+           
         }
+
+        UnityMainThreadDispatcher.Instance().Enqueue(_UI_controller.Show_Alluser());
     }
+
+    private void Dis_User(string name , string  Id)
+    {
+        _AllUser.Remove(Id);
+        UnityMainThreadDispatcher.Instance().Enqueue(_UI_controller.Show_Alluser());
+    }
+
+
+
+    private void OnApplicationQuit()
+    {
+        var message = JsonConvert.SerializeObject(new { Type = "disconnect", sender = Name , msg = id });
+        ws.Send(message);
+    }
+
 }

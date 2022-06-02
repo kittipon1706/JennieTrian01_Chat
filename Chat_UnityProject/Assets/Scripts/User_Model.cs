@@ -5,11 +5,14 @@ using UnityEngine.UI;
 
 public class User_Model : MonoBehaviour
 {
-
-    public void SetUser(string name)
+    public Text myText;
+  
+    public IEnumerator SetUser(string name)
     {
         var text = gameObject.GetComponentInChildren<Text>();
 
         text.text = name;
+
+        yield return null;
     }
 }

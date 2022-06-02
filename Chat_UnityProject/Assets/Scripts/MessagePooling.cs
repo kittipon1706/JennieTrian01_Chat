@@ -1,7 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.UI;
 
 public class MessagePooling : MonoBehaviour
 {
@@ -25,37 +24,45 @@ public class MessagePooling : MonoBehaviour
 
     public List<Pool> pools;
     public Dictionary<string, Queue<GameObject>> poolDictionary;
-    public Queue<KeyValuePair<string,string>> OutPoolmsg = new Queue<KeyValuePair<string, string>>();
+    public Queue<KeyValuePair<string,string>> OutPoolMymsg = new Queue<KeyValuePair<string, string>>();
+    public Queue<KeyValuePair<string,string>> OutPoolOthermsg = new Queue<KeyValuePair<string, string>>();
     public Queue<string> OutPooluser = new Queue<string>();
-    
+    private Client _Client;
+
     void Start()
     {
+        _Client = Client.Instance;
+
         poolDictionary = new Dictionary<string, Queue<GameObject>>();
 
         UnityMainThreadDispatcher.Instance().Enqueue(SetupPool());
     }
     private void Update()
     {
-        if (OutPoolmsg.Count > 0 )
+        if (OutPoolMymsg.Count > 0 )
         {
-            UnityMainThreadDispatcher.Instance().Enqueue(SpawnFormPool("msg", OutPoolmsg.Peek().Key, OutPoolmsg.Peek().Value));
-            UnityMainThreadDispatcher.Instance().Enqueue(Dequeue_OutPoolmsg());
+            UnityMainThreadDispatcher.Instance().Enqueue(SpawnFormPool("Mymsg", OutPoolMymsg.Peek().Key, OutPoolMymsg.Peek().Value));
+            OutPoolMymsg.Dequeue();
         }
 
-        if (OutPooluser.Count > 0)
+        if (OutPoolOthermsg.Count > 0)
         {
-            UnityMainThreadDispatcher.Instance().Enqueue(SpawnFormPool("user", OutPooluser.Peek(), OutPooluser.Peek()));
-            UnityMainThreadDispatcher.Instance().Enqueue(Dequeue_OutPooluser());
+            UnityMainThreadDispatcher.Instance().Enqueue(SpawnFormPool("Othermsg", OutPoolOthermsg.Peek().Key, OutPoolOthermsg.Peek().Value));
+            OutPoolOthermsg.Dequeue();
         }
+
+
     }
-    IEnumerator SpawnFormPool(string tag , string sender , string message)
+
+    
+    public IEnumerator SpawnFormPool(string tag , string sender_name , string message)
     {
         if (!poolDictionary.ContainsKey(tag))
         {
             Debug.LogWarning("Pool with tag" + tag + "doesn't work");
             yield return null;
         }
-        else Debug.Log("Can use pool");
+       
 
         GameObject objectToSpawn = poolDictionary[tag].Dequeue();
         objectToSpawn.SetActive(true);
@@ -64,27 +71,25 @@ public class MessagePooling : MonoBehaviour
         Text_Model text = objectToSpawn.GetComponent<Text_Model>();
         User_Model user = objectToSpawn.GetComponent<User_Model>();
 
+        
         if (user != null)
         {
-            user.SetUser(sender);
+            UnityMainThreadDispatcher.Instance().Enqueue(user.SetUser(sender_name));
         }
 
         if (text != null)
         {
-            text.SetText(sender,message);
+            UnityMainThreadDispatcher.Instance().Enqueue(text.SetText(_Client.Name,sender_name, message));
         }
 
         poolDictionary[tag].Enqueue(objectToSpawn);
 
-        
-
-        yield return objectToSpawn;
+        yield return null;
     }
 
-
-
-    IEnumerator SetupPool()
+    public IEnumerator SetupPool()
     {
+
         foreach (Pool pool in pools)
         {
             Queue<GameObject> objectPool = new Queue<GameObject>();
@@ -101,25 +106,14 @@ public class MessagePooling : MonoBehaviour
         yield return null;
     }
 
-    public IEnumerator Dequeue_OutPoolmsg()
+    public IEnumerator Enqueue_OutPoolmsg(string sender_name , string msg)
     {
-        OutPoolmsg.Dequeue();
-        yield return null;
-    } 
-    public IEnumerator Dequeue_OutPooluser()
-    {
-        OutPooluser.Dequeue();
-        yield return null;
-    }
-
-    public IEnumerator Enqueue_OutPoolmsg(string sender , string msg)
-    {
-        OutPoolmsg.Enqueue(new KeyValuePair<string, string>(sender, msg));
+        if (sender_name == _Client.name)
+        {
+            OutPoolMymsg.Enqueue(new KeyValuePair<string, string>(sender_name, msg));
+        }
+        else OutPoolOthermsg.Enqueue(new KeyValuePair<string, string>(sender_name, msg));
         yield return null;
     }
-    public IEnumerator Enqueue_OutPooluser(string name)
-    {
-        OutPooluser.Enqueue(name);
-        yield return null;
-    }
+   
 }
